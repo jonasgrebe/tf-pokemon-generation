@@ -134,4 +134,28 @@ class PokeGAN:
         return tf.keras.Model(inputs=[input_img], outputs=[d_src, d_aux_types, d_aux_shape])
         
     
+    def generate_random_noise(self, batch_size):
+        pass
+    
+    
+    def encode_types_as_onehot(self, type_1, type_2, batch=True):
+        pass
+    
+    
+    def encode_shape_as_onehot(self, shape, batch=True):
+        pass
+    
+    
+    def load_image(self):
+        pass
+    
+    
+    def fit(data_dir, epochs, batch_size):
+        pass
+    
+    
+    def check_performance(self):
+        pass
+    
+    
 gan = PokeGAN()
