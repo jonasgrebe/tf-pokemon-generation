@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 
 
-pokedex = pd.read_csv('pokemon.txt', na_filter=False)
+pokedex = pd.read_csv('utils/pokemon.txt', na_filter=False)
 
 # drop all pokemon after generation 5
 idxs = pokedex[ pokedex['generation_id'] > 5 ].index
