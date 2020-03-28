@@ -23,8 +23,7 @@ class ACGAN(DCGAN):
             'latent_size': 32,
             'g_aux_loss_weight': 1.0,
             'd_aux_loss_weight': 1.0,
-            'g_lr': 1e-4,
-            'd_lr': 1e-4
+            'g_initial_label_tensor_channels': 1
         }
         c.update(config)
         super(ACGAN, self).__init__(name, c)
@@ -33,48 +32,49 @@ class ACGAN(DCGAN):
         print(self.class_label)
 
     def build_generator(self):
-        filter_sizes = [512, 256, 128, 64]
-        kernel_sizes = [3, 5, 5, 5]
-        dropout_rates = [0.1, 0.2, 0.2, 0.2]
+        filter_sizes = self.config['g_filter_sizes']
+        kernel_sizes = self.config['g_kernel_sizes']
+        dropout_rates = self.config['g_dropout_rates']
 
-        N = 2 ** len(filter_sizes)
+        N = 2 ** (1 + len(filter_sizes))
 
         height, width, _ = self.config['target_shape']
-        initial_tensor_shape = (height // N, width // N, 1)
+        initial_noise_tensor_shape = (height // N, width // N, self.config['g_initial_tensor_channels'])
+        initial_label_tensor_shape = (height // N, width // N, self.config['g_initial_label_tensor_channels'])
 
         input_noise = tf.keras.layers.Input(self.config['noise_size'], name='input-noise')
         input_label = tf.keras.layers.Input(1, name='input-label')
 
-        x = tf.keras.layers.Dense(np.prod(initial_tensor_shape), kernel_initializer=self.config['initializer'])(input_noise)
+        x = tf.keras.layers.Dense(np.prod(initial_noise_tensor_shape), kernel_initializer=self.config['initializer'])(input_noise)
         x = tf.keras.layers.LeakyReLU()(x)
-        x = tf.keras.layers.Reshape(initial_tensor_shape)(x)
+        x = tf.keras.layers.Reshape(initial_noise_tensor_shape)(x)
 
         y = tf.keras.layers.Embedding(self.config['n_classes'], self.config['latent_size'])(input_label)
-        y = tf.keras.layers.Dense(np.prod(initial_tensor_shape), kernel_initializer=self.config['initializer'])(y)
+        y = tf.keras.layers.Dense(np.prod(initial_label_tensor_shape), kernel_initializer=self.config['initializer'])(y)
         y = tf.keras.layers.LeakyReLU()(y)
-        y = tf.keras.layers.Reshape(initial_tensor_shape)(y)
+        y = tf.keras.layers.Reshape(initial_label_tensor_shape)(y)
 
         x = tf.keras.layers.Concatenate()([x, y])
 
         for filters, kernels, dropout in zip(filter_sizes, kernel_sizes, dropout_rates):
-            x = upsampling_module(x, filters, kernels, strides=2, dropout=dropout, initializer=self.config['initializer'])
+            x = upsampling_module(x, filters, kernels, strides=2, dropout=dropout, spectral_norm=False, initializer=self.config['initializer'])
 
-        x = tf.keras.layers.Conv2DTranspose(filters=self.config['target_shape'][-1], kernel_size=5, strides=1, padding='same', kernel_initializer=self.config['initializer'])(x)
+        x = tf.keras.layers.Conv2DTranspose(filters=self.config['target_shape'][-1], kernel_size=5, strides=2, padding='same', kernel_initializer=self.config['initializer'])(x)
         x = tf.keras.layers.Activation('tanh')(x)
 
         return tf.keras.Model(inputs=[input_noise, input_label], outputs=[x], name='generator')
 
 
     def build_discriminator(self):
-        filter_sizes = [256, 128, 64]
-        kernel_sizes = [3, 5, 5]
-        dropout_rates = [0.25, 0.25, 0.25]
+        filter_sizes = self.config['d_filter_sizes']
+        kernel_sizes = self.config['d_kernel_sizes']
+        dropout_rates = self.config['d_dropout_rates']
 
         input_img = tf.keras.layers.Input(self.config['target_shape'], name='input-img')
 
         x = input_img
         for filters, kernels, dropout in zip(filter_sizes, kernel_sizes, dropout_rates):
-            x = downsampling_module(x, filters, kernels, strides=2, dropout=dropout, initializer=self.config['initializer'])
+            x = downsampling_module(x, filters, kernels, strides=2, dropout=dropout, spectral_norm=self.config['spectral_norm'], initializer=self.config['initializer'])
 
         x = tf.keras.layers.Flatten()(x)
 
@@ -106,22 +106,12 @@ class ACGAN(DCGAN):
 
     def training_step(self, s, input_batches, batch_size):
 
-        valid = tf.ones(shape=(batch_size, 1))
-        fake = tf.zeros(shape=(batch_size, 1))
-
-        if self.config['flip_labels']:
-            valid, fake = fake, valid
-            valid_smooth = valid * self.config['one_sided_label_smoothing']
-        else:
-            valid_smooth = valid * (1.0 - self.config['one_sided_label_smoothing'])
-
-        loss_fct = lambda true, pred: tf.reduce_mean(tf.keras.losses.binary_crossentropy(true, pred, from_logits=True))
         aux_loss_fct = lambda true, pred: tf.reduce_mean(tf.keras.losses.sparse_categorical_crossentropy(true, pred, from_logits=True))
 
         def compute_losses(real_src_batch, fake_src_batch, real_aux_batch, fake_aux_batch, label_batch):
-            g_real_src_loss = loss_fct(valid, fake_src_batch)
-            d_real_src_loss = loss_fct(valid, real_src_batch)
-            d_fake_src_loss = loss_fct(fake, fake_src_batch)
+            g_real_src_loss = self.loss_fct(self.valid, fake_src_batch)
+            d_real_src_loss = self.loss_fct(self.valid, real_src_batch)
+            d_fake_src_loss = self.loss_fct(self.fake, fake_src_batch)
 
             d_real_aux_loss = aux_loss_fct(label_batch, real_aux_batch)
             d_fake_aux_loss = aux_loss_fct(label_batch, fake_aux_batch)
@@ -135,7 +125,7 @@ class ACGAN(DCGAN):
         noise_batch, img_batch, label_batch = input_batches
         fake_batch = self.generator([noise_batch, label_batch])
 
-        if self.config['instance_noise_stddev'] is not None:
+        if self.config['instance_noise_stddev'] not in [None, 0.0]:
             img_batch = add_instance_noise(img_batch, stddev=self.config['instance_noise_stddev'])
             fake_batch = add_instance_noise(fake_batch, stddev=self.config['instance_noise_stddev'])
 
@@ -180,6 +170,6 @@ if __name__ == '__main__':
     DATA_DIR = 'C:/Users/Jonas/Documents/GitHub/pokemon-generation/data/sprites'
 
     config = {}
-    acgan = ACGAN(name='acgan', config=config)
+    acgan = ACGAN(name='acgan_shape', label_column='shape', config=config)
 
-    acgan.fit(DATA_DIR, 500, 16, 1)
+    acgan.fit(DATA_DIR, 500, 32, 1)

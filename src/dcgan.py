@@ -34,7 +34,7 @@ class DCGAN:
             'g_lr': 1e-4,
             'd_lr': 1e-4,
 
-            'spectral_norm': True,
+            'spectral_norm': False,
             'initializer': 'glorot_normal',
             'one_sided_label_smoothing': 0.1,
 
@@ -56,6 +56,7 @@ class DCGAN:
             'd_kernel_sizes': [5, 5, 3],
             'd_dropout_rates': [None, 0.3, 0.3]
             }
+
         self.config.update(config)
         with open(os.path.join(self.result_dir, 'config.json'), 'w') as f:
             json.dump(self.config, f, sort_keys=True, indent=4)
@@ -170,6 +171,8 @@ class DCGAN:
 
         with open(os.path.join(self.result_dir, 'config.json'), 'r') as f:
             self.config.update(json.load(f))
+            self.config['instance_noise_stddev'] *= self.config['instance_noise_decay'] ** epoch
+
         self.epoch = epoch
 
     # ===================== SPECIFIC METHODS ===================================
@@ -194,12 +197,7 @@ class DCGAN:
         for filters, kernels, dropout in zip(filter_sizes, kernel_sizes, dropout_rates):
             x = upsampling_module(x, filters, kernels, strides=2, dropout=dropout, spectral_norm=False, initializer=self.config['initializer'])
 
-        l = tf.keras.layers.Conv2DTranspose(filters=self.config['target_shape'][-1], kernel_size=5, strides=2, padding='same', kernel_initializer=self.config['initializer'])
-
-        if self.config['spectral_norm']:
-            x = SpectralNormalization(l)(x)
-        else:
-            x = l(x)
+        x = tf.keras.layers.Conv2DTranspose(filters=self.config['target_shape'][-1], kernel_size=5, strides=2, padding='same', kernel_initializer=self.config['initializer'])(x)
 
         x = tf.keras.layers.Activation('tanh')(x)
 
@@ -236,7 +234,6 @@ class DCGAN:
 
 
     def training_step(self, s, input_batches, batch_size):
-
         valid = tf.ones(shape=(batch_size, 1))
         fake = tf.zeros(shape=(batch_size, 1))
 
@@ -303,6 +300,6 @@ if __name__ == '__main__':
     DATA_DIR = 'C:/Users/Jonas/Documents/GitHub/pokemon-generation/data/sprites'
 
     config = {}
-    dcgan = DCGAN(name='dcgan_5_spectral', config=config)
+    dcgan = DCGAN(name='dcgan_2_spectral', config=config)
 
     dcgan.fit(DATA_DIR, 500, 32, 1)
