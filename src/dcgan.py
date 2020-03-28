@@ -192,7 +192,7 @@ class DCGAN:
         x = tf.keras.layers.Reshape(initial_tensor_shape)(x)
 
         for filters, kernels, dropout in zip(filter_sizes, kernel_sizes, dropout_rates):
-            x = upsampling_module(x, filters, kernels, strides=2, dropout=dropout, spectral_norm=self.config['spectral_norm'], initializer=self.config['initializer'])
+            x = upsampling_module(x, filters, kernels, strides=2, dropout=dropout, spectral_norm=False, initializer=self.config['initializer'])
 
         l = tf.keras.layers.Conv2DTranspose(filters=self.config['target_shape'][-1], kernel_size=5, strides=2, padding='same', kernel_initializer=self.config['initializer'])
 
@@ -305,4 +305,4 @@ if __name__ == '__main__':
     config = {}
     dcgan = DCGAN(name='dcgan_5_spectral', config=config)
 
-    #dcgan.fit(DATA_DIR, 500, 32, 1)
+    dcgan.fit(DATA_DIR, 500, 32, 1)
