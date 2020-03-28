@@ -1,0 +1,78 @@
+{
+    "classes": [
+        "grass",
+        "fire",
+        "water",
+        "bug",
+        "normal",
+        "poison",
+        "electric",
+        "ground",
+        "fairy",
+        "fighting",
+        "psychic",
+        "rock",
+        "ghost",
+        "ice",
+        "dragon",
+        "dark",
+        "steel",
+        "flying"
+    ],
+    "d_aux_loss_weight": 1.0,
+    "d_dropout_rates": [
+        null,
+        0.3,
+        0.3
+    ],
+    "d_filter_sizes": [
+        64,
+        128,
+        256
+    ],
+    "d_kernel_sizes": [
+        5,
+        5,
+        3
+    ],
+    "d_lr": 0.0001,
+    "discard_shiny": false,
+    "flip_labels": false,
+    "g_aux_loss_weight": 1.0,
+    "g_dropout_rates": [
+        null,
+        0.3,
+        0.3
+    ],
+    "g_filter_sizes": [
+        256,
+        128,
+        64
+    ],
+    "g_initial_label_tensor_channels": 1,
+    "g_initial_tensor_channels": 256,
+    "g_kernel_sizes": [
+        3,
+        5,
+        5
+    ],
+    "g_lr": 0.0001,
+    "initializer": "glorot_normal",
+    "instance_noise_decay": 0.01,
+    "instance_noise_stddev": 0.2,
+    "label_column": "type_1",
+    "latent_size": 32,
+    "n_classes": 18,
+    "noise_size": 128,
+    "noise_type": "normal",
+    "one_sided_label_smoothing": 0.1,
+    "randomly_flip_horizontal": true,
+    "randomly_flip_labels": null,
+    "randomly_jitter": false,
+    "spectral_norm": false,
+    "target_shape": [
+        96,
+        96,
+        4
+    ]
+}
