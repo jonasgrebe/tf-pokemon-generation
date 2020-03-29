@@ -115,8 +115,8 @@ class DCGAN:
             if self.config['instance_noise_decay'] is not None and self.config['instance_noise_stddev'] is not None:
                  self.config['instance_noise_stddev'] *= (1.0 - self.config['instance_noise_decay'])
 
-            self.save_weights()
             if self.epoch % sample_interval == 0:
+                 self.save_weights()
                  self.show_performance(seeds, sample_height, sample_width)
 
 
