@@ -11,6 +11,8 @@ from utils.pokemon import get_pokedex_entry, get_all_pokedex_categories, extract
 
 from dcgan import DCGAN
 
+from spectral_norm import SpectralNorm
+
 class ACGAN(DCGAN):
 
     def __init__(self, name='acgan', label_column='type_1', config={}):
@@ -57,7 +59,7 @@ class ACGAN(DCGAN):
         x = tf.keras.layers.Concatenate()([x, y])
 
         for filters, kernels, dropout in zip(filter_sizes, kernel_sizes, dropout_rates):
-            x = upsampling_module(x, filters, kernels, strides=2, dropout=dropout, spectral_norm=False, initializer=self.config['initializer'])
+            x = upsampling_module(x, filters, kernels, strides=2, dropout=dropout, initializer=self.config['initializer'])
 
         x = tf.keras.layers.Conv2DTranspose(filters=self.config['target_shape'][-1], kernel_size=5, strides=2, padding='same', kernel_initializer=self.config['initializer'])(x)
         x = tf.keras.layers.Activation('tanh')(x)
@@ -78,8 +80,8 @@ class ACGAN(DCGAN):
 
         x = tf.keras.layers.Flatten()(x)
 
-        src = tf.keras.layers.Dense(1, kernel_initializer=self.config['initializer'])(x)
-        label = tf.keras.layers.Dense(self.config['n_classes'], kernel_initializer=self.config['initializer'])(x)
+        src = tf.keras.layers.Dense(1, kernel_initializer=self.config['initializer'], kernel_constraint=SpectralNorm() if self.config['spectral_norm'] else None)(x)
+        label = tf.keras.layers.Dense(self.config['n_classes'], kernel_initializer=self.config['initializer'], kernel_constraint=SpectralNorm() if self.config['spectral_norm'] else None)(x)
 
         return tf.keras.Model(inputs=[input_img], outputs=[src, label], name='discriminator')
 
@@ -105,13 +107,26 @@ class ACGAN(DCGAN):
 
 
     def training_step(self, s, input_batches, batch_size):
+        valid = tf.ones(shape=(batch_size, 1))
+        fake = tf.zeros(shape=(batch_size, 1))
 
+        if self.config['flip_labels']:
+            valid, fake = fake, valid
+            valid_smooth = valid * self.config['one_sided_label_smoothing']
+        else:
+            valid_smooth = valid * (1.0 - self.config['one_sided_label_smoothing'])
+
+        if self.config['randomly_flip_labels'] is not None:
+            if tf.random.uniform((), 0, 1) < self.config['randomly_flip_labels']:
+                valid, fake, = fake, valid
+
+        loss_fct = lambda true, pred: tf.reduce_mean(tf.keras.losses.binary_crossentropy(true, pred, from_logits=True))
         aux_loss_fct = lambda true, pred: tf.reduce_mean(tf.keras.losses.sparse_categorical_crossentropy(true, pred, from_logits=True))
 
         def compute_losses(real_src_batch, fake_src_batch, real_aux_batch, fake_aux_batch, label_batch):
-            g_real_src_loss = self.loss_fct(self.valid, fake_src_batch)
-            d_real_src_loss = self.loss_fct(self.valid, real_src_batch)
-            d_fake_src_loss = self.loss_fct(self.fake, fake_src_batch)
+            g_real_src_loss = loss_fct(valid, fake_src_batch)
+            d_real_src_loss = loss_fct(valid, real_src_batch)
+            d_fake_src_loss = loss_fct(fake, fake_src_batch)
 
             d_real_aux_loss = aux_loss_fct(label_batch, real_aux_batch)
             d_fake_aux_loss = aux_loss_fct(label_batch, fake_aux_batch)

@@ -7,7 +7,7 @@ parser.add_argument('--data_dir', type=str, default='C:/Users/Jonas/Documents/Gi
 parser.add_argument('--name', type=str, default='gan')
 parser.add_argument('--type', type=str, default='dcgan', help='GAN Type')
 
-parser.add_argument('--spectral_norm', type=str, default=False)
+parser.add_argument('--spectral_norm', action='store_true')
 
 parser.add_argument('--epochs', type=int, default=1000)
 parser.add_argument('--batch_size', type=int, default=64)

@@ -1,8 +1,8 @@
 import tensorflow as tf
 from imageio import imread, imwrite
 
-def load_single_image(img_file_path):
-    return imread(img_file_path, pilmode='RGBA')
+def load_single_image(img_file_path, alpha=True):
+    return imread(img_file_path, pilmode='RGBA' if alpha else 'RGB')
 
 def save_single_image(img_file_path, img):
     return imwrite(img_file_path, img)

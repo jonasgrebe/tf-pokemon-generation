@@ -9,19 +9,19 @@ from utils.images import load_single_image, save_single_image
 from utils.images import transform_input, transform_output
 from utils.images import randomly_flip_horizontal, add_instance_noise, randomly_jitter
 
-from spectral import SpectralNormalization
+from spectral_norm import SpectralNorm
 
 class DCGAN:
 
-    def __init__(self, name='dcgan', config={}):
+    def __init__(self, name='dcgan', config={}, reload=False):
 
         self.name = name
         self.result_dir = os.path.join('../results', self.name)
 
         if not os.path.isdir(self.result_dir):
             os.makedirs(self.result_dir)
-        else:
-            print(f'Directrory for model {self.name} already exists: Choose another name or delete the old one manually.')
+        elif not reload:
+            print(f'Directory for model {self.name} already exists: Choose another name or delete the old one manually.')
             exit()
 
         self.epoch = 0
@@ -93,6 +93,8 @@ class DCGAN:
         img_file_paths = [os.path.join(data_dir, img_file) for img_file in os.listdir(data_dir)]
         steps = len(img_file_paths) // batch_size
 
+        step_losses = None
+
         for self.epoch in range(self.epoch+1, self.epoch+epochs+1):
             img_file_paths = np.random.permutation(img_file_paths)
 
@@ -112,8 +114,17 @@ class DCGAN:
                  status = f"[{self.epoch}|{epochs} : {s}|{steps}] g_loss: {g_loss} | d_loss: {d_loss}"
                  print(status)
 
+                 if s == 0:
+                    step_losses = np.zeros(shape=(steps, len(single_losses)))
+                 step_losses[s] = single_losses
+
             if self.config['instance_noise_decay'] is not None and self.config['instance_noise_stddev'] is not None:
                  self.config['instance_noise_stddev'] *= (1.0 - self.config['instance_noise_decay'])
+
+            save_path = os.path.join(self.result_dir, 'losses')
+            if not os.path.isdir(save_path):
+                os.mkdir(save_path)
+            np.save(os.path.join(save_path, f'{self.epoch}.npy'), step_losses)
 
             if self.epoch % sample_interval == 0:
                  self.save_weights()
@@ -163,7 +174,7 @@ class DCGAN:
 
         # load model structure since architecture might have changed
         self.generator = tf.keras.models.load_model(os.path.join(weight_save_path, f'g_model_state.h5'))
-        self.discriminator= tf.keras.models.load_model(os.path.join(weight_save_path, f'd_model_state.h5'))
+        self.discriminator= tf.keras.models.load_model(os.path.join(weight_save_path, f'd_model_state.h5'), custom_objects={'SpectralNorm': SpectralNorm})
 
         # restore weights
         self.generator.load_weights(os.path.join(g_weight_save_path, f'{epoch}.h5'))
@@ -195,7 +206,7 @@ class DCGAN:
         x = tf.keras.layers.Reshape(initial_tensor_shape)(x)
 
         for filters, kernels, dropout in zip(filter_sizes, kernel_sizes, dropout_rates):
-            x = upsampling_module(x, filters, kernels, strides=2, dropout=dropout, spectral_norm=False, initializer=self.config['initializer'])
+            x = upsampling_module(x, filters, kernels, strides=2, dropout=dropout, initializer=self.config['initializer'])
 
         x = tf.keras.layers.Conv2DTranspose(filters=self.config['target_shape'][-1], kernel_size=5, strides=2, padding='same', kernel_initializer=self.config['initializer'])(x)
 
@@ -216,7 +227,7 @@ class DCGAN:
             x = downsampling_module(x, filters, kernels, strides=2, dropout=dropout, spectral_norm=self.config['spectral_norm'], initializer=self.config['initializer'])
 
         x = tf.keras.layers.Flatten()(x)
-        x = tf.keras.layers.Dense(1, kernel_initializer=self.config['initializer'])(x)
+        x = tf.keras.layers.Dense(1, kernel_initializer=self.config['initializer'], kernel_constraint=SpectralNorm() if self.config['spectral_norm'] else None)(x)
 
         return tf.keras.Model(inputs=[input_img], outputs=[x], name='discriminator')
 
@@ -257,7 +268,7 @@ class DCGAN:
             g_loss = g_real_src_loss
             d_loss = 0.5 * (d_real_src_loss + d_fake_src_loss)
 
-            return g_loss, d_loss
+            return g_loss, d_loss, [g_real_src_loss, d_real_src_loss // 2, d_fake_src_loss // 2]
 
         noise_batch, img_batch = input_batches
         fake_batch = self.generator(noise_batch)
@@ -269,9 +280,9 @@ class DCGAN:
         real_src_batch = self.discriminator(img_batch)
         fake_src_batch = self.discriminator(fake_batch)
 
-        g_loss, d_loss = compute_losses(real_src_batch, fake_src_batch)
+        g_loss, d_loss, single_losses = compute_losses(real_src_batch, fake_src_batch)
 
-        return g_loss, d_loss, [g_loss, d_loss]
+        return g_loss, d_loss, single_losses
 
 
     def sample(self, seeds=None, n_seeds=8):
@@ -295,6 +306,36 @@ class DCGAN:
 
         save_single_image(os.path.join(save_path, f'{self.epoch}.png'), fakes)
 
+
+    def plot_history(self, sample_interval=1, window_size=256):
+        def plot(history, x_label, y_label, labels, save_path):
+            history = np.swapaxes(history, 0, 1)
+            plt.clf()
+            for h, label in zip(history, labels):
+                plt.plot(h, label=label)
+            plt.legend()
+            plt.xlabel(x_label)
+            plt.ylabel(y_label)
+            plt.savefig(save_path, dpi=256)
+
+        load_path = os.path.join(self.result_dir, 'losses')
+
+        step_losses = []
+        epoch_losses = []
+
+        loss_files = os.listdir(load_path)
+
+        for i in range(1, loss_files+1):
+            e = i * sample_interval
+            step_loss = np.load(os.path.join(load_path, f'{e}.npy'))
+            step_losses.append(step_loss)
+            epoch_losses.append(np.mean(step_loss))
+
+        step_losses = np.concatenate(step_losses, axis=0)
+        epoch_losses = np.concatenate(epoch_losses, axis=0)
+
+        plot(step_losses, 'batches', 'loss', ['g_real_src_loss', 'd_real_src_loss', 'd_fake_src_loss'], os.path.join(self.result_dir, 'step_history.png'))
+        plot(epoch_losses, 'epochs', 'loss', ['g_real_src_loss', 'd_real_src_loss', 'd_fake_src_loss'], os.path.join(self.result_dir, 'epoch_history.png'))
 
 if __name__ == '__main__':
     DATA_DIR = 'C:/Users/Jonas/Documents/GitHub/pokemon-generation/data/sprites'
