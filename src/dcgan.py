@@ -1,6 +1,7 @@
 import tensorflow as tf
 import numpy as np
 import os
+import matplotlib.pyplot as plt
 
 import json
 
@@ -307,7 +308,7 @@ class DCGAN:
         save_single_image(os.path.join(save_path, f'{self.epoch}.png'), fakes)
 
 
-    def plot_history(self, sample_interval=1, window_size=256):
+    def plot_history(self, sample_interval=16):
         def plot(history, x_label, y_label, labels, save_path):
             history = np.swapaxes(history, 0, 1)
             plt.clf()
@@ -325,14 +326,16 @@ class DCGAN:
 
         loss_files = os.listdir(load_path)
 
-        for i in range(1, loss_files+1):
-            e = i * sample_interval
+        for e in range(0, self.epoch+1, sample_interval):
+            if e == 0:
+                continue
+            
             step_loss = np.load(os.path.join(load_path, f'{e}.npy'))
             step_losses.append(step_loss)
-            epoch_losses.append(np.mean(step_loss))
-
+            epoch_losses.append(np.mean(step_loss, axis=0))
+        
         step_losses = np.concatenate(step_losses, axis=0)
-        epoch_losses = np.concatenate(epoch_losses, axis=0)
+        print(step_losses.shape)
 
         plot(step_losses, 'batches', 'loss', ['g_real_src_loss', 'd_real_src_loss', 'd_fake_src_loss'], os.path.join(self.result_dir, 'step_history.png'))
         plot(epoch_losses, 'epochs', 'loss', ['g_real_src_loss', 'd_real_src_loss', 'd_fake_src_loss'], os.path.join(self.result_dir, 'epoch_history.png'))

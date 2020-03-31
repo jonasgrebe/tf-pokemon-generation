@@ -19,6 +19,9 @@ seeds = None
 for model in models:
     gan = DCGAN(name=model, reload=True)
     
+    gan.load_weights(250)
+    gan.plot_history(sample_interval=sample_interval)
+    
     if seeds is None:
         seeds = gan.generate_random_noise(8)
     
