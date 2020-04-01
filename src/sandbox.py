@@ -4,8 +4,6 @@ import os
 from utils.images import save_single_image, load_single_image
 from dcgan import DCGAN
 
-from PIL import Image
-
 models = os.listdir('../results')
 models = [m for m in models if '_old' not in m]
 
