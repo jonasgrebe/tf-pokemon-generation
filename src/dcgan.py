@@ -329,11 +329,11 @@ class DCGAN:
         for e in range(0, self.epoch+1, sample_interval):
             if e == 0:
                 continue
-            
+
             step_loss = np.load(os.path.join(load_path, f'{e}.npy'))
             step_losses.append(step_loss)
             epoch_losses.append(np.mean(step_loss, axis=0))
-        
+
         step_losses = np.concatenate(step_losses, axis=0)
         print(step_losses.shape)
 
@@ -341,9 +341,9 @@ class DCGAN:
         plot(epoch_losses, 'epochs', 'loss', ['g_real_src_loss', 'd_real_src_loss', 'd_fake_src_loss'], os.path.join(self.result_dir, 'epoch_history.png'))
 
 if __name__ == '__main__':
-    DATA_DIR = 'C:/Users/Jonas/Documents/GitHub/pokemon-generation/data/sprites'
+    DATA_DIR = 'C:/Users/Jonas/Documents/GitHub/pokemon-generation/data'
 
     config = {}
-    dcgan = DCGAN(name='dcgan_2_spectral', config=config)
+    dcgan = DCGAN(name='dcgan', config=config)
 
     dcgan.fit(DATA_DIR, 500, 32, 1)
